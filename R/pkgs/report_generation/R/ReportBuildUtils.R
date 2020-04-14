@@ -1,3 +1,4 @@
+
 ##' Utility function for easily referencing chunks inluded as part of
 ##' the package as part of the report.
 ##'
@@ -644,90 +645,6 @@ plot_model_parameter_distributions <- function(name, config){
 }
 
 
-##'
-##' Make figure captions
-##'
-##' @param scenario scenario name from config
-##' @param scenario_nums numbering of scenario
-##' @param interv_start_date intervention start date
-##' @param interv_end_date intervention end date
-##' @param sim_start_date sim start date
-##' @param sim_end_date sim end date
-##' @param location_name report location name
-##' @param figure_num figure number
-##'
-##' @return plot of distribution of peak timing across simulations by county
-##'
-##' @export
-##'
-make_fig_captions <- function(scenario,
-                           scenario_nums = length(scenario_labels),
-                           interv_start_date = interv_date_start,
-                           interv_end_date = interv_date_end,
-                           sim_start_date = sim_date_start,
-                           sim_end_date = sim_date_end,
-                           location_name = report_location_name,
-                           figure_num = 1){
-
-
-  start.Int = format(as.Date(interv_start_date), "%b %d")  # intervention start date
-  end.Int = format(as.Date(interv_end_date), "%b %d")      # intervention end date
-  start.Obs = format(as.Date(sim_start_date), "%b %d")  # simulation observation start date
-  end.Obs = format(as.Date(sim_end_date), "%b %d")      # simulation observatoin end date
-
-  ## Caption for daily hospital occupancy
-  if (scenario == "ts_hosp_state_sample"){
-
-    return(paste("Figure", figure_num, "**Daily hospital occupancy** for 15 random example simulations (light lines) for", scenario_nums,
-                 " planning scenarios of SARS-CoV-2 spread in", location_name," with 1% IFR assumptions. Interventions were applied from",
-                 start.Int," to", end.Int," (grey box).*"))
-
-  }
-
-  ## Caption for daily incident infections
-  if (scenario == "ts_incid_inf_state_sample"){
-    caption = paste("Figure", figure_num, "**Daily incident infections** for 15 random example simulations (light lines) for", scenario_nums,
-                    " planning scenarios of SARS-CoV-2 spread in", location_name," with 1% IFR assumptions. Interventions were applied from",
-                    start.Int," to", end.Int," (grey box).*")
-    return(caption)
-
-  }
-
-  ## Caption for daily incident deaths
-  if (scenario == "ts_incid_death_state_sample_allPdeath"){
-    caption = paste("Figure", figure_num, "**Daily incident deaths** for 15 random example simulations (light lines) for", scenario_nums,
-                    " planning scenarios of SARS-CoV-2 spread in", location_name," with 1% IFR assumptions. Interventions were applied from",
-                    start.Int," to", end.Int," (grey box).*")
-    return(caption)
-
-  }
-
-  ## Caption for distribution of simulation results for the cumulative number of COVID-19 hospitalizations
-  if (scenario == "hist_incidHosp_state"){
-    caption = paste("Figure", figure_num, "Distribution of simulation results for the cumulative number of COVID-19 hospitalizations from",
-                    start.Obs, "through", end.Obs, "for", scenario_nums," scenarios with 1% IFR assumptions.*")
-
-    return(caption)
-  }
-
-  ## Caption for distribution of simulation results for the cumulative number of COVID-19 hospitalizations
-  if (scenario == "line_hospPeak_time_county"){
-    caption = paste("Figure", figure_num, "Distribution of peak hospital occupancy from",
-                    start.Obs, "through", end.Obs, "for", scenario_nums," scenarios with 1% IFR assumptions.*")
-
-    return(caption)
-  }
-
-   ## Caption for county-level cumulative attack rates
-  if (scenario == "county_attack_rate_map"){
-    caption = paste("Figure", figure_num, "County-level cumulative attack rates for", scenario_nums," scenarios.*")
-
-    return(caption)
-  }
-
-
-}
-
 
 
 ##'
@@ -883,18 +800,22 @@ flextable::flextable(tmp[,nlabels]) %>%
 ##' Function makes a summary table for an entire state.
 ##'
 ##' @param hosp_state_totals contains the relevant hospital data
-##' @param period_breas the dates to break up the display periods.
+##' @param period_breaks the dates to break up the display periods.
 ##' @param pi_low low side of the prediction interval
 ##' @param pi_high high side of the prediction interval
+##' @param round_digit what level to round to
 ##' 
 ##' @export
 ##'
 make_scn_time_summary_table <- function(hosp_state_totals,
                                         period_breaks,
                                         pi_low = 0.025,
-                                        pi_high = 0.975) {
+                                        pi_high = 0.975,
+                                        round_digit=-2) {
     ##Make the period ranges and labels 
+    period_breaks <- sort(as.Date(period_breaks)) #out of order leads to bad things....
     period_breaks <- c(min(hosp_state_totals$time)-1, as.Date(period_breaks), max(hosp_state_totals$time)+1)
+   
     len <- length(period_breaks)
     lbls <- sprintf("%s-%s", format(period_breaks[1:(len-1)], "%b %d"),
                     format(period_breaks[2:len], "%b %d"))
@@ -904,32 +825,44 @@ make_scn_time_summary_table <- function(hosp_state_totals,
       mutate(period = cut(time, period_breaks, labels=lbls)) %>%
       group_by(period, scenario_name, sim_num) %>% #summarize totals in periods by scenario
       summarize(PeriodInf = sum(NincidInf),
-                PeriodDeath= sum(NincidDeath),
-                PeriodHosp=sum(NincidHosp),
-                PeriodPkHosp=max(NhospCurr)) %>% 
-    tbl_df%>%ungroup %>%
+                PeriodDeath = sum(NincidDeath),
+                PeriodHosp = sum(NincidHosp),
+                PeriodPkHosp = max(NhospCurr),
+                PeriodICU = sum(NincidICU),
+                PeriodPkICU = sum(NICUCurr)) %>%
+      ungroup %>%
       group_by(period, scenario_name) %>%  #now get means and prediction intervals
-      summarize(PeriodInfPILow = conv_round(quantile(PeriodInf, probs = c(pi_low))),
-                PeriodDeathPILow = conv_round(quantile(PeriodDeath, probs = c(pi_low))),
-                PeriodHospPILow = conv_round(quantile(PeriodHosp, probs = c(pi_low))),
-                PeriodPkHospPILow = conv_round(quantile(PeriodPkHosp, probs = c(pi_low))),
-                PeriodInfPIHigh = conv_round(quantile(PeriodInf, probs = c(pi_high))),
-                PeriodDeathPIHigh = conv_round(quantile(PeriodDeath, probs = c(pi_high))),
-                PeriodHospPIHigh = conv_round(quantile(PeriodHosp, probs = c(pi_high))),
-                PeriodPkHospPIHigh = conv_round(quantile(PeriodPkHosp, probs = c(pi_high))),
-                PeriodInf = conv_round(mean(PeriodInf)),
-                PeriodDeath = conv_round(mean(PeriodDeath)),
-                PeriodHosp = conv_round(mean(PeriodHosp)),
-                PeriodPkHosp = conv_round(mean(PeriodPkHosp))) %>%
+      summarize(PeriodInfPILow = round(quantile(PeriodInf, probs = c(pi_low)),digits = round_digit),
+                PeriodDeathPILow = round(quantile(PeriodDeath, probs = c(pi_low)),digits = round_digit),
+                PeriodHospPILow = round(quantile(PeriodHosp, probs = c(pi_low)),digits = round_digit),
+                PeriodPkHospPILow = round(quantile(PeriodPkHosp, probs = c(pi_low)),digits = round_digit),
+                PeriodICUPILow = round(quantile(PeriodICU, probs = c(pi_low)),digits = round_digit),
+                PeriodPkICUPILow = round(quantile(PeriodPkICU, probs = c(pi_low)),digits = round_digit),
+                PeriodInfPIHigh = round(quantile(PeriodInf, probs = c(pi_high)),digits = round_digit),
+                PeriodDeathPIHigh = round(quantile(PeriodDeath, probs = c(pi_high)),digits = round_digit),
+                PeriodHospPIHigh = round(quantile(PeriodHosp, probs = c(pi_high)),digits = round_digit),
+                PeriodPkHospPIHigh = round(quantile(PeriodPkHosp, probs = c(pi_high)),digits = round_digit),
+                PeriodICUPIHigh = round(quantile(PeriodICU, probs = c(pi_high)),digits = round_digit),
+                PeriodPkICUPIHigh = round(quantile(PeriodPkICU, probs = c(pi_high)),digits = round_digit),
+                PeriodInf = round(mean(PeriodInf),digits = round_digit),
+                PeriodDeath = round(mean(PeriodDeath),digits = round_digit),
+                PeriodHosp = round(mean(PeriodHosp),digits = round_digit),
+                PeriodPkHosp = round(mean(PeriodPkHosp),digits = round_digit),
+                PeriodICU = round(mean(PeriodICU),digits = round_digit),
+                PeriodPkICU = round(mean(PeriodPkICU), digits = round_digit)) %>%
       ungroup() %>% ##make hi/low into CIs
       mutate(PeriodInfPI = paste(format(PeriodInfPILow,big.mark=","), format(PeriodInfPIHigh,big.mark=","), sep="-"),
              PeriodDeathPI = paste(format(PeriodDeathPILow,big.mark=","), format(PeriodDeathPIHigh,big.mark=","), sep="-"),
              PeriodHospPI = paste(format(PeriodHospPILow,big.mark=","), format(PeriodHospPIHigh,big.mark=","), sep="-"),
-             PeriodPkHospPI = paste(format(PeriodPkHospPILow,big.mark=","), format(PeriodPkHospPIHigh,big.mark=","), sep="-")) %>%
+             PeriodPkHospPI = paste(format(PeriodPkHospPILow,big.mark=","), format(PeriodPkHospPIHigh,big.mark=","), sep="-"),
+             PeriodICUPI = paste(format(PeriodICUPILow,big.mark=","), format(PeriodICUPIHigh,big.mark=","), sep="-"),
+             PeriodPkICUPI = paste(format(PeriodPkICUPILow,big.mark=","), format(PeriodPkICUPIHigh,big.mark=","), sep="-"),) %>%
       select(-PeriodInfPILow, -PeriodInfPIHigh,
              -PeriodDeathPILow, -PeriodDeathPIHigh,
              -PeriodHospPILow, -PeriodHospPIHigh,
-             -PeriodPkHospPILow, -PeriodPkHospPIHigh) 
+             -PeriodPkHospPILow, -PeriodPkHospPIHigh,
+             -PeriodICUPILow, -PeriodICUPIHigh,
+             -PeriodPkICUPILow, -PeriodPkICUPIHigh) 
     
   
     tmp<-sprintf("%s_%s", rep(lbls, each=2),c("mean","95% PI"))
@@ -944,7 +877,11 @@ make_scn_time_summary_table <- function(hosp_state_totals,
                tbl_df%>%select(period,scenario_name, PeriodHosp, PeriodHospPI)%>%mutate(outcome="Hospital Admissions in Period")%>%
                  rename(mean=PeriodHosp,`95% PI`=PeriodHospPI),
                tbl_df%>%select(period,scenario_name, PeriodPkHosp, PeriodPkHospPI)%>%mutate(outcome="Peak Hospital Occupancy in Period")%>%
-                 rename(mean=PeriodPkHosp,`95% PI`=PeriodPkHospPI)) %>%
+                 rename(mean=PeriodPkHosp,`95% PI`=PeriodPkHospPI),
+               tbl_df%>%select(period,scenario_name, PeriodICU, PeriodICUPI)%>%mutate(outcome="ICU Admissions in Period")%>%
+                 rename(mean=PeriodICU,`95% PI`=PeriodICUPI),
+               tbl_df%>%select(period,scenario_name, PeriodPkICU, PeriodPkICUPI)%>%mutate(outcome="Peak ICU Occupancy in Period")%>%
+                 rename(mean=PeriodPkICU,`95% PI`=PeriodPkICUPI)) %>%
       mutate(period=as.character(period)) %>%
       pivot_wider(names_from=period, values_from = c(mean,`95% PI`), names_sep=".")%>%
       setNames(nm = sub("(.*)\\.(.*)", "\\2_\\1", names(.)))%>%
@@ -980,29 +917,6 @@ make_scn_time_summary_table <- function(hosp_state_totals,
 
 }
 
-##'
-##' Make caption for statewide table of infections, hosp, ICU, deaths for given scenario
-##'
-##' @param current_scenario text string of scenario label for which to build table
-##' @param table_dates display dates for table
-##' @param table_num table number
-##'
-##' @return plot of distribution of peak timing across simulations by county
-##'
-##' @export
-##'
-make_scn_state_table_cap <- function(current_scenario,
-                                     table_dates,
-                                     table_num = ""){
-
-  to_print <- paste0("Table ", table_num,
-                     "Number of infections, hospitalizations, and deaths due to COVID-19 estimated to occur cumulatively by",
-                     print_pretty_date_short(table_dates),
-                     "under multiple estimates of the infection fatality rate (IFR) and moderate to high transmission of SARS-CoV-2 under",
-                     current_scenario,
-                     "scenario of transmission")
-  print(to_print)
-}
 
 
 
@@ -1052,7 +966,6 @@ plot_event_time_by_geoid <- function(hosp_county_peaks,
     group_by(geoid, scenario_label) %>%
     dplyr::summarise(mean_time = mean(time),
                      median_time = median(time),
-                     uq_median_time = jitter(as.numeric(median_time-start_date), amount = .1),
                      low_time = quantile(time, probs=.25, type=1),
                      hi_time = quantile(time, probs=.75, type=1),
                      value = round(mean(!!value_name,na.rm=T),0)) %>%
@@ -1062,10 +975,8 @@ plot_event_time_by_geoid <- function(hosp_county_peaks,
                                          labels = scenario_labels)) %>%
     dplyr::inner_join(shapefile, by = c("geoid")) %>%
     mutate(
-      name = reorder(name, -as.numeric(uq_median_time))
+      name = reorder(name, -as.numeric(median_time)),
     )
-  values_in_plt <- as.character(to_plt$value[order(-as.numeric(to_plt$uq_median_time))])
-  names(values_in_plt) <- to_plt$name[order(-as.numeric(to_plt$uq_median_time))]
 
   if(length(scenario_labels)==1){
     rc <- ggplot(data=to_plt,
@@ -1075,16 +986,15 @@ plot_event_time_by_geoid <- function(hosp_county_peaks,
       scale_x_continuous(
         labels=levels(to_plt$name),
         breaks=seq_len(nrow(to_plt)),
-        sec.axis = sec_axis(~.,labels = values_in_plt, breaks = seq_len(nrow(to_plt)), name = value_label)
+        sec.axis = sec_axis(~.,labels = to_plt$value[rank(levels(to_plt$name))], breaks = seq_len(nrow(to_plt)), name = value_label)
       ) +
       scale_y_date(time_caption,
-                   limits = c(start_date, end_date),
-                   date_breaks = "2 weeks",
+                   date_breaks = "1 week",
                    date_labels = "%b %d"
                    ) +
       xlab(geoid_caption) +
       theme_bw() +
-      theme(axis.text.x = element_text(angle = 90, hjust = 0.5, vjust = 0), legend.position = "bottom", panel.grid.minor = element_blank())  +
+      theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position = "bottom")  +
       coord_flip()
   } else{
     rc <- ggplot(data=to_plt,
@@ -1093,8 +1003,7 @@ plot_event_time_by_geoid <- function(hosp_county_peaks,
                      color = scenario_label)) +
       geom_pointrange() +
       scale_y_date(time_caption,
-                   limits = c(start_date, end_date),
-                   date_breaks = "2 weeks",
+                   date_breaks = "1 week",
                    date_labels = "%b %d"
                    ) +
       xlab(geoid_caption) +
@@ -1102,7 +1011,7 @@ plot_event_time_by_geoid <- function(hosp_county_peaks,
                          labels = scenario_labels,
                          values = scenario_colors) +
       theme_bw() +
-      theme(axis.text.x = element_text(angle = 90, hjust = 0.5, vjust = 0), legend.position = "bottom", panel.grid.minor = element_blank())  +
+      theme(axis.text.x = element_text(angle = 90, hjust = 1), legend.position = "bottom")  +
       coord_flip()
   }
 
@@ -1110,3 +1019,155 @@ plot_event_time_by_geoid <- function(hosp_county_peaks,
   return(rc)
 
 }
+
+
+##'
+##' Returns a ggplot object giving a boxplot of the range of N 
+##' within each time period. 
+##' 
+##' @param hosp_state_totals,
+##' 
+##' @param df a data frame with columns time, sim_num, scenario_name and N
+##' @param period_breaks the dates to break up the display periods.
+##' @param stat  either "identity" or "peak" [TODO:extend options]
+##' 
+##' @export
+boxplot_by_timeperiod <- function(df,
+                                  period_breaks,
+                                  stat="identity",
+                                  scenario_labels, # TODO provide default arguments
+                                  scenario_colors # TODO provide default arguments
+                                  ) {
+  
+  period_breaks <- c(min(df$time)-1, as.Date(period_breaks), max(df$time)+1)
+  len <- length(period_breaks)
+  lbls <- sprintf("%s-%s", format(period_breaks[1:(len-1)], "%b %d"),
+                  format(period_breaks[2:len], "%b %d"))
+  
+  if(stat=="identity") {
+    sum_func <- function(x){x}
+  } else if(stat=="peak") {
+    sum_func <- function (x) {
+      x %>% 
+        group_by(sim_num, scenario_name, period) %>% 
+        summarize(N=max(N)) %>% 
+        ungroup()
+    }
+  } else {
+    stop("Unknown statistic")
+  }
+  
+
+  rc <- df %>%
+    mutate(period = cut(time, period_breaks, labels=lbls)) %>%
+    sum_func %>% 
+    ggplot(aes(x=reorder(period, desc(period)), y=N, fill=scenario_name)) +
+      geom_boxplot(outlier.alpha = .1, outlier.size=.2) +
+      facet_wrap(~scenario_name,ncol=1)+
+      scale_fill_manual("Scenario",
+                         labels = scenario_labels,
+                         values = scenario_colors) +
+    coord_flip()
+  
+  return(rc)
+    
+}
+
+
+##'
+##' Compare model outputs and data from CSSE
+##' 
+##' @param state_hosp_totals state hosp data frame
+##' @param jhu_obs_dat dataframe with CSSE data
+##' @param scenario_labels character vector with scenario labels
+##' @param scenario_cols character vector with scenario colors
+##' @param obs_data_col character string of observed data color
+##' @param ci.L lower bound confidence interval
+##' @param ci.U upper bound confidence interval
+##' @param date_breaks breaks for dates in figure
+##' @param sim_start_date simulation start date
+##' @param sim_end_date simulation end date
+##' 
+##' @export
+plot_model_vs_obs <- function(state_hosp_totals,
+                              jhu_obs_dat,
+                              scenario_labels,
+                              scenario_cols,
+                              obs_data_col = "black",
+                              ci.L = 0,
+                              ci.U = 1,
+                              date_breaks = "1 month",
+                              sim_start_date,
+                              sim_end_date) {
+  state_hosp_totals <-
+    state_hosp_totals %>%
+    dplyr::mutate(scenario_name = factor(scenario_name,
+                                         levels = scenario_labels,
+                                         labels = scenario_labels),
+                  sim_num = factor(sim_num)) %>%
+    dplyr::rename(date = time) %>%
+    dplyr::filter(!is.na(date)) %>%
+    dplyr::filter(between(date, lubridate::ymd(sim_start_date), lubridate::ymd(sim_end_date)))
+  jhu_obs_dat <- dplyr::filter(jhu_obs_dat, between(date, lubridate::ymd(sim_start_date), lubridate::ymd(sim_end_date)))
+  state_inf_summary <-
+    state_hosp_totals %>%
+    group_by(date, scenario_name) %>%
+    dplyr::summarize(ci_lower_incid_inf = quantile(NincidInf, ci.L),
+                     ci_upper_incid_inf = quantile(NincidInf, ci.U),
+                     mean_incid_inf = mean(NincidInf))
+  
+  ### Incidence of infections plot
+  incid_infections_plot <-
+    ggplot(state_inf_summary, aes(x = date)) +
+    geom_line(aes(y = mean_incid_inf, color = scenario_name)) +
+    geom_ribbon(aes(ymin=ci_lower_incid_inf, ymax=ci_upper_incid_inf, fill = scenario_name), linetype = 0, alpha=0.2) +
+    geom_point(data = jhu_obs_dat, aes(x = date, y = NincidConfirmed), color = obs_data_col) +
+    #ylab("Incident Cases") +
+    #theme(legend.position = "bottom") +
+    scale_x_date(date_breaks = date_breaks,
+                 date_labels = "%b %y",
+                 limits = c(lubridate::ymd(sim_start_date), lubridate::ymd(sim_end_date))) +
+    scale_y_continuous("Incident Cases", labels = scales::comma) +
+    scale_color_manual("Scenario",
+                       labels = scenario_labels,
+                       values = scenario_cols) +
+    theme_minimal() +
+    theme(axis.title.x =  element_blank(),
+          axis.text.x = element_text(angle = 45),
+          legend.position = "bottom",
+          legend.title = element_blank()) +
+    guides(color = guide_legend(nrow = 2, override.aes = list(alpha=1)),
+           fill = FALSE)
+  
+  state_death_summary <-
+    state_hosp_totals %>%
+    # dplyr::filter(date %in% jhu_obs_dat$date) %>%
+    group_by(date, scenario_name) %>%
+    dplyr::summarize(ci_lower_incid_death = quantile(NincidDeath, ci.L),
+                     ci_upper_incid_death = quantile(NincidDeath, ci.U),
+                     mean_incid_death = mean(NincidDeath))
+  incid_deaths_plot <-
+    ggplot(state_death_summary, aes(x = date)) +
+    geom_line(aes(y = mean_incid_death, color = scenario_name)) +
+    geom_ribbon(aes(ymin=ci_lower_incid_death, ymax=ci_upper_incid_death, fill = scenario_name), linetype = 0, alpha=0.2) +
+    geom_point(data = jhu_obs_dat, aes(x = date, y = NincidDeathsObs), color = obs_data_col) +
+    #ylab("Incident Cases") +
+    #theme(legend.position = "bottom") +
+    scale_x_date(date_breaks = date_breaks,
+                 date_labels = "%b %y",
+                 limits = c(lubridate::ymd(sim_start_date), lubridate::ymd(sim_end_date))) +
+    scale_y_continuous("Incident Deaths", labels = scales::comma) +
+    scale_color_manual("Scenario",
+                       labels = scenario_labels,
+                       values = scenario_cols) +
+    theme_minimal() +
+    theme(axis.title.x =  element_blank(),
+          axis.text.x = element_text(angle = 45),
+          legend.position = "bottom",
+          legend.title = element_blank()) +
+    guides(color = guide_legend(nrow = 2, override.aes = list(alpha=1)),
+           fill = FALSE)
+  output <- list(incid_infections_plot, incid_deaths_plot)
+  return(output)
+}
+
